@@ -1,97 +1,94 @@
-import csv
 import mysql.connector
+import csv
+from datetime import datetime
+import os
 
+os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-def insert_clientes_from_csv():
-    # Configuración de conexión a MySQL
-    conn = mysql.connector.connect(
-        host="localhost",      # Cambia si tu servidor no es localhost
-        user="root",           # Usuario de MySQL
-        password="",           # Contraseña de MySQL
-        database="crm"         # Base de datos
-    )
-    cursor = conn.cursor()
+config_clientes = {
+    'user': 'root',
+    'password': '',
+    'host': 'localhost',
+    'port': 3306,
+    'database': 'crm'
+}
 
-    # 🔹 Vaciar tabla antes de insertar
-    cursor.execute("TRUNCATE TABLE Clientes")
+config_usuarios = {
+    'user': 'root',
+    'password': '',
+    'host': 'localhost',
+    'port': 3306,
+    'database': 'dbo'
+}
 
-    # Ruta de tu archivo CSV
-    csv_file = "clientes.csv"
-
-    # Abrir y leer el archivo CSV
-    with open(csv_file, newline='', encoding="utf-8") as file:
-        reader = csv.DictReader(file)
-
+def insertar_clientes(cursor, archivo_csv):
+    with open(archivo_csv, newline='', encoding='utf-8') as csvfile:
+        reader = csv.reader(csvfile)
+        next(reader)  
         for row in reader:
-            sql = """
-            INSERT INTO Clientes (cliente_id, nombre, apellido, email)
-            VALUES (%s, %s, %s, %s)
-            """
-            values = (
-                row["cliente_id"],
-                row["nombre"],
-                row["apellido"],
-                row["email"],
-            )
+            cliente_id, nombre, apellido, email, fecha_str = row
+            fecha_mysql = datetime.strptime(fecha_str, "%d/%m/%Y %H:%M")
 
-            try:
-                cursor.execute(sql, values)
-            except mysql.connector.Error as err:
-                print(f"Error insertando {row['nombre']}: {err}")
+            cursor.execute("SELECT COUNT(*) FROM clientes WHERE email = %s", (email,))
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("""
+                    INSERT INTO clientes (cliente_id, nombre, apellido, email, FechaRegistro)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (cliente_id, nombre, apellido, email, fecha_mysql))
+            else:
+                print(f"Cliente con email {email} ya existe, se omite.")
 
-    # Confirmar cambios
-    conn.commit()
-    cursor.close()
-    conn.close()
-    print("Datos de Clientes insertados correctamente desde CSV.")
-
-
-def insert_usuarios_from_csv():
-    # Configuración de conexión a MySQL
-    conn = mysql.connector.connect(
-        host="localhost",      
-        user="root",           
-        password="",           
-        database="crm"         
-    )
-    cursor = conn.cursor()
-
-    # 🔹 Vaciar tabla antes de insertar
-    cursor.execute("TRUNCATE TABLE Usuarios")
-
-    # Ruta de tu archivo CSV
-    csv_file = "usuarios.csv"
-
-    # Abrir y leer el archivo CSV
-    with open(csv_file, newline='', encoding="utf-8") as file:
-        reader = csv.DictReader(file)
-
+def insertar_usuarios(cursor, archivo_csv):
+    with open(archivo_csv, newline='', encoding='utf-8') as csvfile:
+        reader = csv.reader(csvfile)
+        next(reader)
         for row in reader:
-            sql = """
-            INSERT INTO Usuarios (username, first_name, last_name, email, password_hash, rol)
-            VALUES (%s, %s, %s, %s, %s, %s)
-            """
-            values = (
-                row["username"],
-                row["first_name"],
-                row["last_name"],
-                row["email"],
-                row["password_hash"],
-                row.get("rol", "user")
-            )
+            userId, username, first_name, last_name, email, password_hash, rol, fecha_str = row
+            fecha_mysql = datetime.strptime(fecha_str, "%d/%m/%Y %H:%M")
 
-            try:
-                cursor.execute(sql, values)
-            except mysql.connector.Error as err:
-                print(f"Error insertando {row['username']}: {err}")
+            cursor.execute("SELECT COUNT(*) FROM usuarios WHERE email = %s OR username = %s", (email, username))
+            if cursor.fetchone()[0] == 0:
+                cursor.execute("""
+                    INSERT INTO usuarios (userId, username, first_name, last_name, email, password_hash, rol, fecha_creacion)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                """, (userId, username, first_name, last_name, email, password_hash, rol, fecha_mysql))
+            else:
+                print(f"Usuario {username} o email {email} ya existe, se omite.")
 
-    # Confirmar cambios
-    conn.commit()
-    cursor.close()
-    conn.close()
-    print("Datos de Usuarios insertados correctamente desde CSV.")
+def main():
+    conn_c = cursor_c = None
+    try:
+        conn_c = mysql.connector.connect(**config_clientes)
+        cursor_c = conn_c.cursor()
+        insertar_clientes(cursor_c, "clientes.csv")
+        conn_c.commit()
+        print("Clientes insertados correctamente.")
+    except mysql.connector.Error as err:
+        print(f"Error clientes: {err}")
+        if conn_c:
+            conn_c.rollback()
+    finally:
+        if cursor_c:
+            cursor_c.close()
+        if conn_c:
+            conn_c.close()
 
+    conn_u = cursor_u = None
+    try:
+        conn_u = mysql.connector.connect(**config_usuarios)
+        cursor_u = conn_u.cursor()
+        insertar_usuarios(cursor_u, "usuarios.csv")
+        conn_u.commit()
+        print("Usuarios insertados correctamente.")
+    except mysql.connector.Error as err:
+        print(f"Error usuarios: {err}")
+        if conn_u:
+            conn_u.rollback()
+    finally:
+        if cursor_u:
+            cursor_u.close()
+        if conn_u:
+            conn_u.close()
 
-# Ejecutar funciones
-insert_clientes_from_csv()
-insert_usuarios_from_csv()
+if __name__ == "__main__":
+    main()

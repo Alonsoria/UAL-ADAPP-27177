@@ -1,17 +1,16 @@
 from rapidfuzz import process, fuzz
-import pyodbc
+import mysql.connector
 
-def connect_to_azure_sql(server, database, username, password):
-    connection_string = (
-        f"DRIVER={{ODBC Driver 17 for SQL Server}};"
-        f"SERVER={server};"
-        f"DATABASE={database};"
-        f"UID={username};"
-        f"PWD={password};"
-        "Encrypt=yes;"
-        "TrustServerCertificate=yes;"
+def connect_to_mysql(host, database, username, password, port=3306):
+    connection = mysql.connector.connect(
+        host=host,
+        user=username,
+        password=password,
+        database=database,
+        port=port
     )
-    return pyodbc.connect(connection_string)
+    return connection
+
 
 def fuzzy_match(queryRecord, choices, score_cutoff=0):
     scorers = [fuzz.WRatio, fuzz.QRatio, fuzz.token_set_ratio, fuzz.ratio]
@@ -68,13 +67,14 @@ def fuzzy_match(queryRecord, choices, score_cutoff=0):
 
 
 def execute_dynamic_matching(params_dict, score_cutoff=0):
-    conn = connect_to_azure_sql(
-        server=params_dict.get("server", ""),
+    conn = connect_to_mysql(
+        host=params_dict.get("server", "localhost"),
         database=params_dict.get("database", ""),
-        username=params_dict.get("username", ""),
-        password=params_dict.get("password", "")
+        username=params_dict.get("username", "root"),
+        password=params_dict.get("password", ""),
+        port=params_dict.get("port", 3306)
     )
-    cursor = conn.cursor()
+    cursor = conn.cursor(dictionary=True)
 
     if 'src_dest_mappings' not in params_dict or not params_dict['src_dest_mappings']:
         raise ValueError("Debe proporcionar src_dest_mappings con columnas origen y destino")
@@ -82,18 +82,17 @@ def execute_dynamic_matching(params_dict, score_cutoff=0):
     src_cols = ", ".join(params_dict['src_dest_mappings'].keys())
     dest_cols = ", ".join(params_dict['src_dest_mappings'].values())
 
-    sql_source = f"SELECT {src_cols} FROM {params_dict['sourceSchema']}.{params_dict['sourceTable']}"
-    sql_dest   = f"SELECT {dest_cols} FROM {params_dict['destSchema']}.{params_dict['destTable']}"
+    db = params_dict.get("database", "")
+    sql_source = f"SELECT {src_cols} FROM {params_dict['sourceDatabase']}.{params_dict['sourceTable']}"
+    sql_dest   = f"SELECT {dest_cols} FROM {params_dict['destDatabase']}.{params_dict['destTable']}"
+
+
 
     cursor.execute(sql_source)
-    src_rows = cursor.fetchall()
-    src_columns = [col[0] for col in cursor.description]
-    source_data = [dict(zip(src_columns, row)) for row in src_rows]
+    source_data = cursor.fetchall()
 
     cursor.execute(sql_dest)
-    dest_rows = cursor.fetchall()
-    dest_columns = [col[0] for col in cursor.description]
-    dest_data = [dict(zip(dest_columns, row)) for row in dest_rows]
+    dest_data = cursor.fetchall()
 
     conn.close()
 
@@ -120,17 +119,18 @@ def execute_dynamic_matching(params_dict, score_cutoff=0):
 
 
 params_dict = {
-    "server": "tu_server",
-    "database": "tu_database",
-    "username": "tu_usuario",
-    "password": "tu_contraseña",
-    "sourceSchema": "dbo",
-    "sourceTable": "tabla_origen",
-    "destSchema": "dbo",
-    "destTable": "tabla_destino",
+    "server": "localhost",
+    "port": 3306,
+    "username": "root",
+    "password": "",
+    "sourceDatabase": "crm",    
+    "sourceTable": "Clientes",  
+    "destDatabase": "dbo",       
+    "destTable": "Usuarios",           
     "src_dest_mappings": {
-        "nombre": "first_name",
-        "Ciudad": "City"
+        "nombre": "first_name",       
+        "apellido": "last_name",      
+        "email": "email"              
     }
 }
 
