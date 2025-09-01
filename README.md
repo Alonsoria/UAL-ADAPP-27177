@@ -27,3 +27,10 @@ Nombre de la tabla de destino donde se buscarán coincidencias.
 
 src_dest_mappings
 Diccionario que mapea las columnas de la tabla de origen con las columnas de la tabla de destino para la comparación.
+
+Cambios hechos en el poyecto para optimizarlo:
+
+1. Unificación de funciones: Se juntaron -insertar_clientes- y -insertar_usuarios- en una sola función genérica para evitar repetir código.
+2. Parámetros dinámicos: Ahora la tabla, columnas y claves únicas se pasan como parámetros, haciendo la función reutilizable en cualquier caso.
+3. Código más limpio: Se redujo duplicación en -main()-, mejorando el mantenimiento y permitiendo agregar nuevas tablas con menos esfuerzo, ahora cada dato que ya exista en la tabla dara el comentario de que ya existe, por ende se omite.
+4. Se agregó un parametro para hacer que solo los datos del numero 70 para arriba se tomen en cuenta.
