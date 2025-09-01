@@ -11,7 +11,6 @@ def connect_to_mysql(host, database, username, password, port=3306):
     )
     return connection
 
-
 def fuzzy_match(queryRecord, choices, score_cutoff=0):
     scorers = [fuzz.WRatio, fuzz.QRatio, fuzz.token_set_ratio, fuzz.ratio]
     processor = lambda x: str(x).lower()
