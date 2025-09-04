@@ -1,5 +1,7 @@
 from rapidfuzz import process, fuzz
 import mysql.connector
+import pandas as pd
+import os 
 
 def connect_to_mysql(host, database, username, password, port=3306):
     connection = mysql.connector.connect(
@@ -112,3 +114,142 @@ def execute_dynamic_matching(params_dict, score_cutoff=0):
         matching_records.append(dict_query_records)
 
     return matching_records
+
+def display_results(resultados, as_dataframe=True, selected_columns=None, num_rows=None):
+    df = pd.DataFrame(resultados)
+
+    # Filtrar por columnas elegidas
+    if selected_columns:
+        df = df[selected_columns]
+
+    if num_rows is not None and num_rows > 0:
+        df = df.head(num_rows)
+
+    if as_dataframe:
+        print(df)
+    else:
+        print(df.to_dict(orient="records"))
+
+
+def display_results(resultados, as_dataframe=True, num_columns=None, num_rows=None):
+    """
+    Display resultados as a DataFrame or dictionary.
+    :param resultados: The result data (list of dicts or dict)
+    :param as_dataframe: If True, display as DataFrame; else as dictionary
+    :param num_columns: Number of columns to display (int or None for all)
+    :param num_rows: Number of rows to display (int or None for all)
+    """
+    df = pd.DataFrame(resultados)
+
+    if num_columns is not None and num_columns > 0:
+        df = df.iloc[:, :num_columns]
+
+    if num_rows is not None and num_rows > 0:
+        df = df.head(num_rows)
+
+    if as_dataframe:
+        print(df)
+    else:
+        print(df.to_dict(orient="records"))
+
+def export_results_to_csv(resultados, filename="resultados.csv", selected_columns=None, rename_map=None, num_rows=None):
+    import pandas as pd, os
+
+    if num_rows == 0: 
+        print("No se exportó CSV: número de filas = 0 (archivo vacío).")
+        return
+
+    df = pd.DataFrame(resultados)
+
+    # --- Add Full Name column if nombre & apellido exist ---
+    if "nombre" in df.columns and "apellido" in df.columns:
+        df["Full Name"] = df["nombre"].astype(str) + " " + df["apellido"].astype(str)
+
+    # --- Convert score to percentage if exists ---
+    if "score" in df.columns:
+        df["score"] = (df["score"] * 100).round(2).astype(str) + "%"
+
+    if selected_columns is not None:
+        if len(selected_columns) == 0:
+            print("Error: No puedes exportar un archivo con 0 columnas seleccionadas.")
+            return
+
+        if "score" not in selected_columns and "score" in df.columns:
+            selected_columns.append("score")
+
+        if "Full Name" not in selected_columns and "Full Name" in df.columns:
+            selected_columns.append("Full Name")
+
+        df = df[selected_columns]
+
+        if rename_map:
+            df = df.rename(columns=rename_map)
+
+    if num_rows is not None and num_rows > 0:
+        df = df.head(num_rows)
+
+    if not filename.endswith(".csv"):
+        filename += ".csv"
+
+    output_dir = "archivos csv"
+    os.makedirs(output_dir, exist_ok=True)
+
+    filepath = os.path.join(output_dir, filename)
+    df.to_csv(filepath, index=False)
+    print(f"Results exported to {filepath}")
+
+
+def export_results_to_excel(resultados, filename="resultados.xlsx", selected_columns=None, rename_map=None, num_rows=None):
+    import pandas as pd, os
+
+    if num_rows == 0:  
+        print("No se exportó Excel: número de filas = 0 (archivo vacío).")
+        return
+
+    df = pd.DataFrame(resultados)
+
+    # --- Add Full Name column ---
+    if "nombre" in df.columns and "apellido" in df.columns:
+        df["Full Name"] = df["nombre"].astype(str) + " " + df["apellido"].astype(str)
+
+    # --- Convert score to percentage (as string) ---
+    if "score" in df.columns:
+        df["score"] = (df["score"] * 100).round(2).astype(str) + "%"
+
+    # --- Filter selected columns ---
+    if selected_columns is not None:
+        if len(selected_columns) == 0:
+            print("Error: No puedes exportar un archivo con 0 columnas seleccionadas.")
+            return
+
+        if "score" not in selected_columns and "score" in df.columns:
+            selected_columns.append("score")
+
+        if "Full Name" not in selected_columns and "Full Name" in df.columns:
+            selected_columns.append("Full Name")
+
+        df = df[selected_columns]
+
+        if rename_map:
+            df = df.rename(columns=rename_map)
+
+    if num_rows is not None and num_rows > 0:
+        df = df.head(num_rows)
+
+    # --- Ensure filename extension ---
+    if not filename.endswith(".xlsx"):
+        filename += ".xlsx"
+
+    # --- Ensure output dir exists ---
+    output_dir = "archivos xlsx"
+    os.makedirs(output_dir, exist_ok=True)
+
+    filepath = os.path.join(output_dir, filename)
+
+    try:
+        df.to_excel(filepath, index=False, engine="openpyxl")  # force engine
+        print(f"Results exported to {filepath}")
+    except ImportError:
+        print("❌ Necesitas instalar 'openpyxl'. Corre: pip install openpyxl")
+    except Exception as e:
+        print(f"❌ Error al exportar a Excel: {e}")
