@@ -67,10 +67,48 @@ else:
         filename = input("Enter the filename for the Excel file (default: resultados.xlsx): ").strip()
         if not filename:
             filename = "resultados.xlsx"
-        myFuctionsModule.export_results_to_excel(
+        myFuctionsModule.export_results_to_xlsx(
             resultados,
             filename,
             selected_columns=selected_columns,
             rename_map=rename_map,
             num_rows=num_rows
     )
+
+matched, unmatched = myFuctionsModule.separate_matched_records(resultados, threshold=97.0)
+
+print("\nMatched Records (>=97%):")
+print(matched)
+
+print("\nUnmatched Records (<97%):")
+print(unmatched)
+
+myFuctionsModule.export_matched_or_unmatched(
+    resultados,
+    selected_columns=selected_columns,
+    rename_map=rename_map,
+)
+
+action = input("Do you want to 'export' results or 'import' a file into DB? ").strip().lower()
+
+if action == "export":
+    myFuctionsModule.export_matched_or_unmatched(
+        resultados,
+        selected_columns=selected_columns,
+        rename_map=rename_map
+    )
+
+elif action == "import":
+    file_path = input("Enter the path of the file to import (CSV/XLSX): ").strip()
+
+    db_config = {
+        "host": "localhost",
+        "user": "root",
+        "password": "",
+        "database": "crm"   # <-- cámbialo si usas otra base
+    }
+
+    myFuctionsModule.import_file_and_insert_to_db(file_path, db_config)
+
+else:
+    print("Invalid choice. Exiting.")

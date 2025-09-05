@@ -152,104 +152,233 @@ def display_results(resultados, as_dataframe=True, num_columns=None, num_rows=No
     else:
         print(df.to_dict(orient="records"))
 
-def export_results_to_csv(resultados, filename="resultados.csv", selected_columns=None, rename_map=None, num_rows=None):
-    import pandas as pd, os
-
-    if num_rows == 0: 
-        print("No se exportó CSV: número de filas = 0 (archivo vacío).")
-        return
+def _prepare_dataframe(resultados, selected_columns=None, rename_map=None, force_all_rows=False):
+    """Helper to prepare DataFrame with score %, full_name and selected/renamed columns"""
+    if not resultados:
+        return pd.DataFrame()
 
     df = pd.DataFrame(resultados)
 
-    # --- Add Full Name column if nombre & apellido exist ---
-    if "nombre" in df.columns and "apellido" in df.columns:
-        df["Full Name"] = df["nombre"].astype(str) + " " + df["apellido"].astype(str)
-
-    # --- Convert score to percentage if exists ---
+    # Score como porcentaje si existe
     if "score" in df.columns:
-        df["score"] = (df["score"] * 100).round(2).astype(str) + "%"
+        df["score"] = df["score"].astype(float) * 100
 
-    if selected_columns is not None:
-        if len(selected_columns) == 0:
-            print("Error: No puedes exportar un archivo con 0 columnas seleccionadas.")
+    # Crear columna full_name si existen nombre y apellido
+    if "nombre" in df.columns and "apellido" in df.columns:
+        df["full_name"] = df["nombre"].astype(str) + " " + df["apellido"].astype(str)
+
+    # Filtrar columnas seleccionadas, más score y full_name
+    if selected_columns:
+        keep = []
+        for col in selected_columns:
+            if col in df.columns:
+                keep.append(col)
+        # Score y full_name son siempre incluidos
+        if "score" in df.columns:
+            keep.append("score")
+        if "full_name" in df.columns:
+            keep.append("full_name")
+        df = df[keep]
+
+    # Renombrar columnas
+    if rename_map:
+        df.rename(columns=rename_map, inplace=True)
+
+    # Limitar filas solo si no es export matched/unmatched
+    if not force_all_rows and "num_rows" in locals():
+        pass  # se maneja desde caller
+
+    return df
+
+
+def export_results_to_csv(resultados, filename, selected_columns=None, rename_map=None, num_rows=None, force_all_rows=False):
+    try:
+        df = _prepare_dataframe(resultados, selected_columns, rename_map, force_all_rows)
+
+        if df.empty or df.shape[1] == 0:
+            print("No valid data to export.")
             return
 
-        if "score" not in selected_columns and "score" in df.columns:
-            selected_columns.append("score")
+        if not filename.endswith(".csv"):
+            filename += ".csv"
 
-        if "Full Name" not in selected_columns and "Full Name" in df.columns:
-            selected_columns.append("Full Name")
+        output_dir = "archivos csv"
+        os.makedirs(output_dir, exist_ok=True)
+        filepath = os.path.join(output_dir, filename)
 
-        df = df[selected_columns]
+        # Limitar filas solo si no es export matched/unmatched
+        if not force_all_rows and num_rows and num_rows > 0:
+            df = df.head(num_rows)
 
-        if rename_map:
-            df = df.rename(columns=rename_map)
+        df.to_csv(filepath, index=False)
+        print(f"CSV exported successfully: {filepath}")
 
-    if num_rows is not None and num_rows > 0:
-        df = df.head(num_rows)
-
-    if not filename.endswith(".csv"):
-        filename += ".csv"
-
-    output_dir = "archivos csv"
-    os.makedirs(output_dir, exist_ok=True)
-
-    filepath = os.path.join(output_dir, filename)
-    df.to_csv(filepath, index=False)
-    print(f"Results exported to {filepath}")
+    except Exception as e:
+        print(f"Error exporting CSV: {e}")
 
 
-def export_results_to_excel(resultados, filename="resultados.xlsx", selected_columns=None, rename_map=None, num_rows=None):
-    import pandas as pd, os
+def export_results_to_xlsx(resultados, filename, selected_columns=None, rename_map=None, num_rows=None, force_all_rows=False):
+    try:
+        df = _prepare_dataframe(resultados, selected_columns, rename_map, force_all_rows)
 
-    if num_rows == 0:  
-        print("No se exportó Excel: número de filas = 0 (archivo vacío).")
+        if df.empty or df.shape[1] == 0:
+            print("No valid data to export.")
+            return
+
+        if not filename.endswith(".xlsx"):
+            filename += ".xlsx"
+
+        output_dir = "archivos xlsx"
+        os.makedirs(output_dir, exist_ok=True)
+        filepath = os.path.join(output_dir, filename)
+
+        # Limitar filas solo si no es export matched/unmatched
+        if not force_all_rows and num_rows and num_rows > 0:
+            df = df.head(num_rows)
+
+        df.to_excel(filepath, index=False, engine="openpyxl")
+        print(f"Excel exported successfully: {filepath}")
+
+    except ImportError:
+        print("Missing dependency: install openpyxl (pip install openpyxl).")
+    except Exception as e:
+        print(f"Error exporting Excel: {e}")
+
+
+
+# --------------------
+# IMPORT FUNCTION
+# --------------------
+
+def separate_matched_records(resultados, threshold=97.0):
+    df = pd.DataFrame(resultados)
+    if "score" not in df.columns:
+        print("No 'score' column found.")
+        return pd.DataFrame(), pd.DataFrame()
+
+    matched = df[df["score"] * 100 >= threshold]
+    unmatched = df[df["score"] * 100 < threshold]
+
+    return matched, unmatched
+
+
+def export_matched_or_unmatched(resultados, selected_columns=None, rename_map=None, threshold=97.0):
+    matched_df, unmatched_df = separate_matched_records(resultados, threshold)
+
+    choice_group = input("Do you want to export 'matched' or 'unmatched' results? ").strip().lower()
+    if choice_group == "matched":
+        df_to_export = matched_df
+        default_name_csv = "matched_results.csv"
+        default_name_xlsx = "matched_results.xlsx"
+    elif choice_group == "unmatched":
+        df_to_export = unmatched_df
+        default_name_csv = "unmatched_results.csv"
+        default_name_xlsx = "unmatched_results.xlsx"
+    else:
+        print("Invalid choice. No file exported.")
         return
 
-    df = pd.DataFrame(resultados)
+    if df_to_export.empty:
+        print(f"No {choice_group} records found to export.")
+        return
 
-    # --- Add Full Name column ---
-    if "nombre" in df.columns and "apellido" in df.columns:
-        df["Full Name"] = df["nombre"].astype(str) + " " + df["apellido"].astype(str)
+    export_choice = input("Do you want to export as 'csv' or 'xlsx'? ").strip().lower()
 
-    # --- Convert score to percentage (as string) ---
-    if "score" in df.columns:
-        df["score"] = (df["score"] * 100).round(2).astype(str) + "%"
+    if export_choice == "csv":
+        filename = input(f"Enter the filename for CSV (default: {default_name_csv}): ").strip()
+        if not filename:
+            filename = default_name_csv
+        export_results_to_csv(df_to_export.to_dict(orient="records"), filename,
+                              selected_columns=selected_columns, rename_map=rename_map,
+                              num_rows=None, force_all_rows=True)
 
-    # --- Filter selected columns ---
-    if selected_columns is not None:
-        if len(selected_columns) == 0:
-            print("Error: No puedes exportar un archivo con 0 columnas seleccionadas.")
-            return
+    elif export_choice == "xlsx":
+        filename = input(f"Enter the filename for Excel (default: {default_name_xlsx}): ").strip()
+        if not filename:
+            filename = default_name_xlsx
+        export_results_to_xlsx(df_to_export.to_dict(orient="records"), filename,
+                               selected_columns=selected_columns, rename_map=rename_map,
+                               num_rows=None, force_all_rows=True)
 
-        if "score" not in selected_columns and "score" in df.columns:
-            selected_columns.append("score")
+    else:
+        print("Invalid format. No file exported.")
 
-        if "Full Name" not in selected_columns and "Full Name" in df.columns:
-            selected_columns.append("Full Name")
-
-        df = df[selected_columns]
-
-        if rename_map:
-            df = df.rename(columns=rename_map)
-
-    if num_rows is not None and num_rows > 0:
-        df = df.head(num_rows)
-
-    # --- Ensure filename extension ---
-    if not filename.endswith(".xlsx"):
-        filename += ".xlsx"
-
-    # --- Ensure output dir exists ---
-    output_dir = "archivos xlsx"
-    os.makedirs(output_dir, exist_ok=True)
-
-    filepath = os.path.join(output_dir, filename)
+def import_file_and_insert_to_db(file_path, db_config):
+    table_name = "archivo_exportado"  # Tabla fija
 
     try:
-        df.to_excel(filepath, index=False, engine="openpyxl")  # force engine
-        print(f"Results exported to {filepath}")
-    except ImportError:
-        print("❌ Necesitas instalar 'openpyxl'. Corre: pip install openpyxl")
+        # Check file existence
+        if not os.path.exists(file_path):
+            print(f"File not found: {file_path}")
+            return
+
+        # Read file
+        if file_path.endswith(".csv"):
+            df = pd.read_csv(file_path)
+        elif file_path.endswith(".xlsx"):
+            df = pd.read_excel(file_path)
+        else:
+            print("Unsupported file type. Only CSV and XLSX are allowed.")
+            return
+
+        if df.empty:
+            print("The file is empty, no data imported.")
+            return
+
+        print(f"File imported successfully with {len(df)} rows and {len(df.columns)} columns.")
+
+        # Connect to DB
+        try:
+            conn = mysql.connector.connect(
+                host=db_config["host"],
+                user=db_config["user"],
+                password=db_config["password"],
+                database=db_config["database"]
+            )
+        except mysql.connector.Error as err:
+            print(f"Database connection error: {err}")
+            return
+
+        cursor = conn.cursor()
+
+        # Build CREATE TABLE dynamically
+        create_cols = [f"`{col}` TEXT" for col in df.columns]
+        create_stmt = f"CREATE TABLE IF NOT EXISTS `{table_name}` ({', '.join(create_cols)})"
+
+        try:
+            cursor.execute(create_stmt)
+        except mysql.connector.Error as err:
+            print(f"Error creating table `{table_name}`: {err}")
+            conn.close()
+            return
+
+        # Truncate table before inserting new data
+        try:
+            cursor.execute(f"TRUNCATE TABLE `{table_name}`")
+        except mysql.connector.Error as err:
+            print(f"Error truncating table `{table_name}`: {err}")
+            conn.close()
+            return
+
+        # Insert data row by row
+        cols = ", ".join([f"`{c}`" for c in df.columns])
+        placeholders = ", ".join(["%s"] * len(df.columns))
+        insert_stmt = f"INSERT INTO `{table_name}` ({cols}) VALUES ({placeholders})"
+
+        try:
+            for _, row in df.iterrows():
+                cursor.execute(insert_stmt, tuple(row.fillna("").values))  # Replace NaN with ""
+            conn.commit()
+        except mysql.connector.Error as err:
+            print(f"Error inserting data: {err}")
+            conn.rollback()
+            cursor.close()
+            conn.close()
+            return
+
+        cursor.close()
+        conn.close()
+        print(f"Data inserted into table `{table_name}` successfully!")
+
     except Exception as e:
-        print(f"❌ Error al exportar a Excel: {e}")
+        print(f"Unexpected error during import: {e}")
