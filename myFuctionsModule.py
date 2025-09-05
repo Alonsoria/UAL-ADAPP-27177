@@ -307,27 +307,27 @@ def import_file_and_insert_to_db(file_path, db_config):
     table_name = "archivo_exportado"  # Tabla fija
 
     try:
-        # Check file existence
+        # Verificar existencia del archivo
         if not os.path.exists(file_path):
-            print(f"File not found: {file_path}")
+            print(f"Archivo no encontrado: {file_path}")
             return
 
-        # Read file
+        # Leer archivo
         if file_path.endswith(".csv"):
             df = pd.read_csv(file_path)
         elif file_path.endswith(".xlsx"):
             df = pd.read_excel(file_path)
         else:
-            print("Unsupported file type. Only CSV and XLSX are allowed.")
+            print("Tipo de archivo no soportado. Solo se permiten CSV y XLSX.")
             return
 
         if df.empty:
-            print("The file is empty, no data imported.")
+            print("El archivo está vacío, no se importaron datos.")
             return
 
-        print(f"File imported successfully with {len(df)} rows and {len(df.columns)} columns.")
+        print(f"Archivo importado correctamente con {len(df)} filas y {len(df.columns)} columnas.")
 
-        # Connect to DB
+        # Conectar a la base de datos
         try:
             conn = mysql.connector.connect(
                 host=db_config["host"],
@@ -336,41 +336,41 @@ def import_file_and_insert_to_db(file_path, db_config):
                 database=db_config["database"]
             )
         except mysql.connector.Error as err:
-            print(f"Database connection error: {err}")
+            print(f"Error de conexión a la base de datos: {err}")
             return
 
         cursor = conn.cursor()
 
-        # Build CREATE TABLE dynamically
-        create_cols = [f"`{col}` TEXT" for col in df.columns]
-        create_stmt = f"CREATE TABLE IF NOT EXISTS `{table_name}` ({', '.join(create_cols)})"
+        # Eliminar la tabla si existe para evitar conflictos de columnas
+        try:
+            cursor.execute(f"DROP TABLE IF EXISTS {table_name}")
+        except mysql.connector.Error as err:
+            print(f"Error eliminando la tabla {table_name}: {err}")
+            conn.close()
+            return
+
+        # Crear la tabla dinámicamente
+        create_cols = [f"{col} TEXT" for col in df.columns]
+        create_stmt = f"CREATE TABLE {table_name} ({', '.join(create_cols)})"
 
         try:
             cursor.execute(create_stmt)
         except mysql.connector.Error as err:
-            print(f"Error creating table `{table_name}`: {err}")
+            print(f"Error creando la tabla {table_name}: {err}")
             conn.close()
             return
 
-        # Truncate table before inserting new data
-        try:
-            cursor.execute(f"TRUNCATE TABLE `{table_name}`")
-        except mysql.connector.Error as err:
-            print(f"Error truncating table `{table_name}`: {err}")
-            conn.close()
-            return
-
-        # Insert data row by row
-        cols = ", ".join([f"`{c}`" for c in df.columns])
+        # Insertar datos fila por fila
+        cols = ", ".join([f"{c}" for c in df.columns])
         placeholders = ", ".join(["%s"] * len(df.columns))
-        insert_stmt = f"INSERT INTO `{table_name}` ({cols}) VALUES ({placeholders})"
+        insert_stmt = f"INSERT INTO {table_name} ({cols}) VALUES ({placeholders})"
 
         try:
             for _, row in df.iterrows():
-                cursor.execute(insert_stmt, tuple(row.fillna("").values))  # Replace NaN with ""
+                cursor.execute(insert_stmt, tuple(row.fillna("").values))  # Reemplaza NaN por ""
             conn.commit()
         except mysql.connector.Error as err:
-            print(f"Error inserting data: {err}")
+            print(f"Error insertando datos: {err}")
             conn.rollback()
             cursor.close()
             conn.close()
@@ -378,7 +378,7 @@ def import_file_and_insert_to_db(file_path, db_config):
 
         cursor.close()
         conn.close()
-        print(f"Data inserted into table `{table_name}` successfully!")
+        print(f"¡Datos insertados en la tabla {table_name} correctamente!")
 
     except Exception as e:
-        print(f"Unexpected error during import: {e}")
+        print(f"Error inesperado durante la importación: {e}")
